@@ -1,0 +1,108 @@
+import bpy
+import bmesh
+import math
+import numpy as np
+from mathutils import Vector
+
+# Clear existing mesh objects
+for obj in bpy.data.objects:
+    if obj.type == 'MESH':
+        bpy.data.objects.remove(obj, do_unlink=True)
+
+def create_julia_set_points(t, point_density, iterations, max_t):
+    # Calculate Julia set parameter that changes with t
+    julia_point = complex(
+        0.32 * math.sin((t/max_t) * 2 * math.pi),
+        0.3 * (math.cos((t/max_t) * 2 * math.pi) - 1)
+    )
+    
+    points = []
+    output_array = np.zeros((point_density, point_density))
+    
+    # Generate Julia set
+    for m in range(point_density):
+        for n in range(point_density):
+            x = m/((point_density-1)/4) - 2 - 4/point_density
+            y = n/((point_density-1)/4) - 2 - 4/point_density
+            point = complex(x, y)
+            z = point
+            
+            k = 0
+            while k < iterations:
+                if abs(z) > 2:
+                    k = iterations + 1
+                    break
+                k += 1
+                z = z*z + julia_point
+            
+            if k == iterations + 1:
+                output_array[m,n] = 1
+    
+    # Find boundary points
+    for n in range(1, point_density-1):
+        for m in range(1, point_density-1):
+            if output_array[n,m] == 0:
+                if (output_array[n+1,m] == 1 or 
+                    output_array[n-1,m] == 1 or 
+                    output_array[n,m+1] == 1 or 
+                    output_array[n,m-1] == 1):
+                    points.append((m, n))
+    
+    return points
+
+# Parameters
+point_density = 100  # Reduced from 100 for better performance
+iterations = 200
+max_t = 200  # Reduced from 200 for better performance
+scale_factor = 10  # Scale the final mesh
+
+# Collect all points
+all_points = []
+for t in range(max_t):
+    points = create_julia_set_points(t, point_density, iterations, max_t)
+    z_height = t / 2.5  # Match the MATLAB scaling
+    for p in points:
+        all_points.append((p[0] * scale_factor, p[1] * scale_factor, z_height * scale_factor))
+
+# Create new mesh and object
+mesh = bpy.data.meshes.new("FractalVase")
+obj = bpy.data.objects.new("FractalVase", mesh)
+
+# Link object to scene
+scene = bpy.context.scene
+scene.collection.objects.link(obj)
+
+# Create mesh from points
+bm = bmesh.new()
+
+# Add vertices
+for p in all_points:
+    bm.verts.new(p)
+
+bm.verts.ensure_lookup_table()
+
+# Optional: Add faces using surface reconstruction
+bmesh.ops.triangulate(bm, faces=bm.faces)
+
+# Update mesh
+bm.to_mesh(mesh)
+bm.free()
+
+# Smooth the mesh
+obj.modifiers.new(name="Smooth", type='SMOOTH')
+obj.modifiers["Smooth"].factor = 0.5
+obj.modifiers["Smooth"].iterations = 3
+
+# Add Skin modifier to give volume
+skin_mod = obj.modifiers.new(name="Skin", type='SKIN')
+
+# Add Subdivision Surface for smoothing
+subsurf_mod = obj.modifiers.new(name="Subsurf", type='SUBSURF')
+subsurf_mod.levels = 2
+
+# Recalculate normals
+mesh.calc_normals()
+
+# Select the new object
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)

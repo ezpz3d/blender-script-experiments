@@ -1,0 +1,146 @@
+import bpy
+import bmesh
+import math
+import cmath
+import numpy as np
+
+# Parameters for the Mandelbrot Set
+x_min = -2.0
+x_max = 1.0
+y_min = -1.5
+y_max = 1.5
+resolution = 0.02  # Adjust for finer or coarser grid
+
+max_iterations = 50
+escape_radius = 2.0
+
+# Create a new mesh for the Mandelbrot Set
+mandelbrot_mesh = bpy.data.meshes.new("MandelbrotMesh")
+mandelbrot_object = bpy.data.objects.new("MandelbrotObject", mandelbrot_mesh)
+bpy.context.collection.objects.link(mandelbrot_object)
+
+# Create a BMesh to store the points
+bm = bmesh.new()
+
+# Generate grid points
+x_values = np.arange(x_min, x_max, resolution)
+y_values = np.arange(y_min, y_max, resolution)
+
+for x in x_values:
+    for y in y_values:
+        c = complex(x, y)
+        z = 0
+        iteration = 0
+        while abs(z) <= escape_radius and iteration < max_iterations:
+            z = z * z + c
+            iteration += 1
+        if iteration == max_iterations:
+            # Check if the point is on the boundary
+            neighbors = [
+                complex(x + resolution, y),
+                complex(x - resolution, y),
+                complex(x, y + resolution),
+                complex(x, y - resolution)
+            ]
+            boundary = False
+            for n_c in neighbors:
+                n_z = 0
+                n_iteration = 0
+                while abs(n_z) <= escape_radius and n_iteration < max_iterations:
+                    n_z = n_z * n_z + n_c
+                    n_iteration += 1
+                if n_iteration < max_iterations:
+                    boundary = True
+                    break
+            if boundary:
+                bm.verts.new((x, y, 0))
+
+# Finish up the Mandelbrot mesh
+bm.to_mesh(mandelbrot_mesh)
+bm.free()
+
+# Parameters for the Julia Sets
+z_x_min = -1.5
+z_x_max = 1.5
+z_y_min = -1.5
+z_y_max = 1.5
+z_resolution = 0.01
+
+# Create a new mesh for the Julia Sets
+julia_mesh = bpy.data.meshes.new("JuliaMesh")
+julia_object = bpy.data.objects.new("JuliaObject", julia_mesh)
+bpy.context.collection.objects.link(julia_object)
+
+bm_julia = bmesh.new()
+
+# Generate the path of c values starting and ending at c=0
+num_layers = 200  # Increase this for more layers
+t_values = np.linspace(0, 1, num_layers)
+path_c_values = []
+
+for t in t_values:
+    # Modified path equation to start and end at c=0
+    theta = 2 * math.pi * t
+    radius = 0.7885 * (1 - abs(2 * t - 1))  # Radius decreases to zero at start and end
+    c = radius * cmath.exp(1j * theta)
+    path_c_values.append(c)
+
+# Generate grid points for z
+z_x_values = np.arange(z_x_min, z_x_max, z_resolution)
+z_y_values = np.arange(z_y_min, z_y_max, z_resolution)
+
+# Generate Julia Sets along the path
+for idx, c in enumerate(path_c_values):
+    print(f"Processing layer {idx + 1}/{len(path_c_values)}")
+    for x in z_x_values:
+        for y in z_y_values:
+            z = complex(x, y)
+            iteration = 0
+            while abs(z) <= escape_radius and iteration < max_iterations:
+                z = z * z + c
+                iteration += 1
+            if iteration == max_iterations:
+                # Check if the point is on the boundary
+                neighbors = [
+                    complex(x + z_resolution, y),
+                    complex(x - z_resolution, y),
+                    complex(x, y + z_resolution),
+                    complex(x, y - z_resolution)
+                ]
+                boundary = False
+                for n_z in neighbors:
+                    n = n_z
+                    n_iteration = 0
+                    while abs(n) <= escape_radius and n_iteration < max_iterations:
+                        n = n * n + c
+                        n_iteration += 1
+                    if n_iteration < max_iterations:
+                        boundary = True
+                        break
+                if boundary:
+                    # Offset the Julia Sets in the Z-direction
+                    bm_julia.verts.new((x, y, idx * 0.1))
+
+# Finish up the Julia mesh
+bm_julia.to_mesh(julia_mesh)
+bm_julia.free()
+
+# Optional: Set up materials for better visualization
+# Create a new material
+mandelbrot_material = bpy.data.materials.new(name="MandelbrotMaterial")
+mandelbrot_material.diffuse_color = (1, 0, 0, 1)  # Red color
+mandelbrot_object.data.materials.append(mandelbrot_material)
+
+julia_material = bpy.data.materials.new(name="JuliaMaterial")
+julia_material.diffuse_color = (0, 0, 1, 1)  # Blue color
+julia_object.data.materials.append(julia_material)
+
+# Adjust the viewport shading to see the points
+for area in bpy.context.screen.areas:
+    if area.type == 'VIEW_3D':
+        for space in area.spaces:
+            if space.type == 'VIEW_3D':
+                space.shading.type = 'SOLID'
+                space.shading.color_type = 'MATERIAL'
+
+
