@@ -1,0 +1,75 @@
+import numpy as np
+import bpy
+import bmesh
+
+# Parameters
+n_points = 200  # Resolution of the mesh
+width = 2.0  # Width of the Klein Bottle
+height = 4.0  # Height of the Klein Bottle
+perturb_scale = 0.1  # Scale of the perturbation applied to the Klein surface
+
+# Generate a parametric Klein Bottle shape
+def generate_klein_bottle(n_points, width, height):
+    u = np.linspace(0, 2 * np.pi, n_points)
+    v = np.linspace(0, 2 * np.pi, n_points)
+    u, v = np.meshgrid(u, v)
+
+    x = (width + height * np.cos(u / 2) * np.sin(v) - np.sin(u / 2) * np.sin(2 * v)) * np.cos(u)
+    y = (width + height * np.cos(u / 2) * np.sin(v) - np.sin(u / 2) * np.sin(2 * v)) * np.sin(u)
+    z = height * np.sin(u / 2) * np.sin(v) + np.cos(u / 2) * np.sin(2 * v)
+    return x, y, z, u, v
+
+# Apply perturbation to the Klein surface
+def perturb_klein_surface(x, y, z, u, v, perturb_scale):
+    for i in range(x.shape[0]):
+        for j in range(x.shape[1]):
+            perturb = np.sin(4 * u[i, j]) * np.cos(4 * v[i, j])
+            x[i, j] += perturb_scale * perturb * np.cos(u[i, j])
+            y[i, j] += perturb_scale * perturb * np.sin(u[i, j])
+            z[i, j] += perturb_scale * perturb * np.sin(v[i, j])
+    return x, y, z
+
+# Create mesh vertices and faces
+def create_mesh_data(x, y, z):
+    vertices = np.column_stack((x.ravel(), y.ravel(), z.ravel()))
+    faces = []
+    n_points = x.shape[0]
+    for i in range(n_points - 1):
+        for j in range(n_points - 1):
+            faces.append([i * n_points + j, i * n_points + j + 1, (i + 1) * n_points + j])
+            faces.append([(i + 1) * n_points + j, i * n_points + j + 1, (i + 1) * n_points + j + 1])
+    return vertices, faces
+
+# Clear existing objects
+bpy.ops.object.select_all(action='SELECT')
+bpy.ops.object.delete(use_global=False)
+
+# Generate Klein Bottle shape
+x, y, z, u, v = generate_klein_bottle(n_points, width, height)
+
+# Apply perturbation
+x, y, z = perturb_klein_surface(x, y, z, u, v, perturb_scale)
+
+# Create mesh data
+vertices, faces = create_mesh_data(x, y, z)
+
+# Create a new mesh and object in Blender
+mesh = bpy.data.meshes.new(name="PerturbedKleinBottle")
+obj = bpy.data.objects.new("PerturbedKleinBottle", mesh)
+
+# Link the object to the scene
+scene = bpy.context.scene
+scene.collection.objects.link(obj)
+
+# Create the mesh from the vertices and faces
+mesh.from_pydata(vertices.tolist(), [], faces)
+mesh.update()
+
+# Optional: Set the object mode to 'EDIT' and remove duplicate vertices
+bpy.context.view_layer.objects.active = obj
+bpy.ops.object.mode_set(mode='EDIT')
+bm = bmesh.from_edit_mesh(mesh)
+bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.0001)
+bmesh.update_edit_mesh(mesh)
+bpy.ops.object.mode_set(mode='OBJECT')
+
