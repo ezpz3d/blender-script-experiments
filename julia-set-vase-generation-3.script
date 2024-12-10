@@ -1,0 +1,80 @@
+import bpy
+import numpy as np
+import bmesh
+
+# Clear mesh objects in the scene
+bpy.ops.object.select_all(action='DESELECT')
+bpy.ops.object.select_by_type(type='MESH')
+bpy.ops.object.delete()
+
+# Initialize parameters
+pointDensity = 100
+iterations = 100
+maxT = 200
+
+# Initialize dynamic list to store 3D output
+threeDoutput = []
+
+# Main loop for generating the point cloud
+# Main loop for generating the point cloud
+for t in range(maxT + 1):
+    # Define the Julia point
+    juliaPoint = 0.32 * np.sin((t / float(maxT)) * 2 * np.pi) + 0.3 * (np.cos((t / float(maxT)) * 2 * np.pi) - 1) * 1j
+    outputArray = np.zeros((pointDensity, pointDensity), dtype=int)
+    
+    # Loop through a grid
+    for m in range(1, pointDensity + 1):
+        for n in range(1, pointDensity + 1):
+            k = 0
+            x = m / ((float(pointDensity) - 1) / 4) - 2 - 4 / float(pointDensity)
+            y = n / ((float(pointDensity) - 1) / 4) - 2 - 4 / float(pointDensity)
+            zn = x + y * 1j
+            # Julia set calculations
+            while k < iterations:
+                if np.abs(zn) > 2:
+                    k = iterations + 1
+                else:
+                    k += 1
+                    zn = zn ** 2 + juliaPoint
+            
+            # Update the output array
+            if k == iterations + 1:
+                outputArray[m-1, n-1] = 1
+                
+    # Create an array to store boundary points
+    plotArray = []
+    for n in range(pointDensity):
+        for m in range(pointDensity):
+            if outputArray[n, m] == 0:
+                if (outputArray[min(n+1, pointDensity-1), m] == 1 or
+                    outputArray[max(n-1, 0), m] == 1 or
+                    outputArray[n, min(m+1, pointDensity-1)] == 1 or
+                    outputArray[n, max(m-1, 0)] == 1):
+                    plotArray.append([m, n, t])
+                    
+    # Append to 3D output
+    threeDoutput.extend(plotArray)
+
+# Convert to numpy array and normalize
+threeDoutput = np.array(threeDoutput, dtype=float)
+threeDoutput[:, 2] /= 2.5
+
+# Create the point cloud in Blender
+mesh = bpy.data.meshes.new(name="JuliaSetPointCloud")
+obj = bpy.data.objects.new("JuliaSetPointCloud", mesh)
+
+bpy.context.collection.objects.link(obj)
+bpy.context.view_layer.objects.active = obj
+obj.select_set(True)
+
+mesh = bpy.context.object.data
+bm = bmesh.new()
+
+# Populate the point cloud
+for point in threeDoutput:
+    bmesh.ops.create_vert(bm, co=(point[0], point[1], point[2]))
+
+bm.to_mesh(mesh)
+bm.free()
+
+
